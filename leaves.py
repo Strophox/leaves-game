@@ -48,13 +48,19 @@ class LeavesGame:
                 return ' '
             else:
                 piece = self._board_pieces[(x,y)]
-                return {-1:'┼',0:'░',1:'█',2:'▒',3:'▓'}.get(piece, str(piece))
+                return {-1:'╋',0:'░',1:'█',2:'▒',3:'▓'}.get(piece, str(piece))
         (max_x,max_y) = self.current_board_size
-        string = "\n".join(
-            "".join(
-                show(x,y)
-                for x in range(max_x) )
-            for y in range(max_y) )
+        string = (
+          ("╭" + (max_x+1)*"─" + "╮\n")
+          + "\n".join(
+              "│"
+              + "".join(
+                  show(x,y)
+              for x in range(max_x+1) )
+              + "│"
+          for y in range(max_y+1) )
+          + ("\n╰" + (max_x+1)*"─" + "╯")
+        )
         return string
 
     @property
@@ -72,25 +78,33 @@ class LeavesGame:
         return (max_x,max_y)
 
     def attempt_move(offset, direction):
-        move = assert False # TODO
-        return
+        """Try to make a move for the current player, return True if successful and False otherwise."""
+        if not possible_move(offset, direction):
+          return False
+        if self._current_direction == ANY:
+            direction = self._current_direction
+        # Modify board
+        return True
 
     def possible_move(offset, direction):
+        """Check whether a given move is possible for the current player."""
         if self._current_direction == ANY:
             if direction not in [NORTH,WEST,SOUTH,WEST]:
                 return False
             else:
                 direction = self._current_direction
-        assert False # TODO
-        return
+        (max_x,max_y) = self.current_board_size
+        max_offset = max_x if direction in [EAST,WEST] else max_y
+        return 0 <= offset <= max_offset
 
     def prune(self):
         """Remove all leaves not attached to a log piece from the board."""
-        for x,row in enumerate(self._board):
-            for y,_ in enumerate(row):
-                if not any(self._board[y+dy][x+dx]
-                           for (dx,dy) in [(1,0),(0,1),(-1,0),(0,-1)]):
-                    self._board[y][x] = -1
+        for (x,y) in self._board_pieces:
+            any_neighboring_logs = any(self._board[(x+dx,y+dy)] == -1
+                                       for (dx,dy) in [(1,0),(0,1),(-1,0),(0,-1)]
+                                       if (x+dx,y+dy) in self._board)
+            if not any_neighboring_logs:
+                self._board_pieces.pop((x,y))
         return
 
     @staticmethod
@@ -120,7 +134,7 @@ def main():
     print("hi")
 
     game = LeavesGame()
-    for x in game.turn_sequence:
+    for x in game._turn_sequence:
       print(x)
 
     print(game)
