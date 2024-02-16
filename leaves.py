@@ -43,7 +43,7 @@ class LeavesGame:
         self._pieces_per_player = 10
         # A generator of player IDs
         self._player_sequence = self._produce_sequence()
-        # A Player ID and direction
+        # A Player ID and direction, or None
         self._current_turn = (next(self._player_sequence), ANY)
         # A dictionary of board pieces with their coordinates
         self._board_pieces = { (0,y):-1 for y in range(self._log_pieces) }
@@ -80,7 +80,7 @@ class LeavesGame:
 
     @property
     def current_turn_number(self):
-        return len(self._board_pieces) - self._log_pieces + 1
+        return (1 + len(self._board_pieces) - self._log_pieces)
 
     def compute_board_size(self):
         max_x = max(x for (x,_) in self._board_pieces)
@@ -109,9 +109,9 @@ class LeavesGame:
                 pieces_remaining[player] -= 1
                 yield player
 
-    def attempt_move(offset, direction):
+    def attempt_move(self, offset, direction):
         """Try to make a move for the current player, return True if successful and False otherwise."""
-        if not possible_move(offset, direction):
+        if not check_move(offset, direction):
             return False
         # Modify board
         current_piece = self.current_player
@@ -125,23 +125,27 @@ class LeavesGame:
         case "WEST":
             pass
         try:
-            self._current_player = next(self._turn_sequence)
+            next_player = next(self._turn_sequence)
+            self._current_turn =
         except StopIteration:
-
+            self._current_turn = None
         return True
 
-    def possible_move(offset, direction):
+    def check_move(self, offset, direction):
         """Check whether a given move is possible for the current player."""
-        if self.current_player is None:
+        # Has game ended?
+        if self._current_turn is None:
             return False
-        if self.current_direction == ANY:
-            if direction not in [NORTH,WEST,SOUTH,WEST]:
-                return False
-            else:
-                direction = self.current_direction
+        # Is the direction forced?
+        if self.current_direction != ANY:
+            direction = self.current_direction
+        # Otherwise, is the chosen direction valid?
+        elif direction not in [NORTH,WEST,SOUTH,WEST]:
+            return False
+        # Move is valid if valid offset into the correct direction
         (max_x,max_y) = self.compute_board_size()
         max_offset = max_x if direction in [EAST,WEST] else max_y
-        return 0 <= offset <= max_offset
+        return (0 <= offset <= max_offset)
 
     def _pruned(self):
         """Remove all leaves not attached to a log piece from the board."""
