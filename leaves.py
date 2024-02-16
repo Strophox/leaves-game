@@ -82,7 +82,11 @@ class LeavesGame:
 
     def _winner(self):
       scores = self.current_scores
-      return max(scores, key=scores.get)
+      best_score = max(scores.values())
+      if list(scores.values()).count(best_score) == 1:
+        return max(scores, key=scores.get)
+      else:
+        return -1
 
     def _produce_sequence(self, players=None, pieces_per_player=None):
         if players is None:
