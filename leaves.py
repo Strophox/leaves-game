@@ -42,34 +42,16 @@ WEST  = 3
 # BEGIN CLASSES
 
 class LeavesGame:
-    def __init__(self):
-        self._log_pieces = 5
-        self._players = 2
-        self._pieces_per_player = 10
+    def __init__(self, log_pieces=5, players=2, pieces_per_player=10):
+        self._log_pieces = log_pieces
+        self._players = players
+        self._pieces_per_player = pieces_per_player
         # A generator of player IDs
         self._player_sequence = self._produce_sequence()
         # A Player ID and direction, or None
         self._current_turn = (next(self._player_sequence), ANY)
         # A dictionary of board pieces with their coordinates
         self._board_pieces = { (0,y):-1 for y in range(self._log_pieces) }
-
-    def __str__(self):
-        def show(x,y):
-            """Given a coordinate, return a way to represent the piece there."""
-            if (x,y) not in self._board_pieces:
-                return ' '
-            else:
-                piece = self._board_pieces[(x,y)]
-                return {-1:'╋',0:'░',1:'█',2:'▒',3:'▓'}.get(piece, str(piece))
-        (max_x,max_y) = self.compute_board_size()
-        string = (
-            "\n".join(
-                "".join(
-                    show(x,y)
-                for x in range(max_x+1) )
-            for y in range(max_y+1) )
-        )
-        return string
 
     @property
     def is_over(self):
@@ -84,18 +66,23 @@ class LeavesGame:
         return (None if self.is_over else self._current_turn[1])
 
     @property
-    def current_turn_number(self):
+    def current_round(self):
         return (1 + len(self._board_pieces) - self._log_pieces)
 
-    def compute_board_size(self):
-        max_x = max(x for (x,_) in self._board_pieces)
-        max_y = max(y for (_,y) in self._board_pieces)
-        return (max_x,max_y)
+    @property
+    def current_board_size(self):
+        return LeavesGame._board_size(self._board_pieces)
 
-    def compute_scores(self):
-        scores = Counter(self._pruned().values())
+    @property
+    def current_scores(self):
+        pruned_board = LeavesGame._board_pruned(self._board_pieces)
+        scores = dict(Counter(pruned_board.values()))
         scores.pop(-1)
         return scores
+
+    def _winner(self):
+      scores = self.current_scores
+      return max(scores, key=scores.get)
 
     def _produce_sequence(self, players=None, pieces_per_player=None):
         if players is None:
@@ -114,40 +101,33 @@ class LeavesGame:
                 pieces_remaining[player] -= 1
                 yield player
 
-    def _pruned(self):
-        """Remove all leaves not attached to a log piece from the board."""
-        valid_pieces = self._board_pieces.copy()
-        for (x,y) in self._board_pieces:
-            #is_log_itself = self._board_pieces[(x+dx,y+dy)] == -1
-            has_neighboring_logs = any(self._board_pieces[(x+dx,y+dy)] == -1
-                                       for (dx,dy) in [(1,0),(0,1),(-1,0),(0,-1)]
-                                       if (x+dx,y+dy) in self._board_pieces)
-            if not has_neighboring_logs:
-                valid_pieces.pop((x,y))
-        return valid_pieces
+    def str_tree(self):
+        return LeavesGame._board_str(self._board_pieces)
 
-    def attempt_move(self, offset, direction):
+    def str_pruned(self):
+        return LeavesGame._board_str(LeavesGame._board_pruned(self._board_pieces))
+
+    def make_move(self, offset, direction):
         """Try to make a move for the current player, return True if successful and False otherwise."""
-        if not self.check_move(offset, direction):
-            return False
+        err = self.check_move(offset, direction)
+        if err:
+            raise ValueError(err)
         # Modify board
-        (max_x,max_y) = self.compute_board_size()
+        (max_x,max_y) = self.current_board_size
         move_direction = direction if self.current_direction == ANY else self.current_direction
         ((x,y),(dx,dy)) = {
-            NORTH: ((offset,max_y), ( 0, 1)),
+            NORTH: ((offset,max_y), ( 0,-1)),
             EAST : ((0,offset),     ( 1, 0)),
-            SOUTH: ((offset,0),     ( 0,-1)),
-            WEST : ((offset,max_x), (-1, 0)),
+            SOUTH: ((offset,0),     ( 0, 1)),
+            WEST : ((max_x,offset), (-1, 0)),
         }[move_direction]
         # Skip empty tiles at the beginning
-        print(self._board_pieces)
         while (x,y) not in self._board_pieces:
-            print(f"{(x,y)} ain't it")
             x += dx
             y += dy
         # Start moving first group of pieces
         moving_piece = self.current_player
-        while moving_piece != None:
+        while moving_piece is not None:
             (moving_piece, self._board_pieces[(x,y)]) = (self._board_pieces.get((x,y)), moving_piece)
             x += dx
             y += dy
@@ -155,73 +135,145 @@ class LeavesGame:
         if x < -1 or y < -1:
             (fix_x,fix_y) = (1,0) if x < -1 else (0,1)
             (self._board_pieces, broken_pieces) = (dict(), self._board_pieces)
-            for ((x,y),tile) in self._board_pieces:
+            for ((x,y),tile) in broken_pieces.items():
                 self._board_pieces[(x+fix_x,y+fix_y)] = tile
         # Update internal state of whose turn it is
         try:
             next_player = next(self._player_sequence)
-            next_direction = ANY if next_player != self.current_player else (self.current_direction + 1) % 4
+            next_direction = ANY if next_player != self.current_player else (move_direction + 1) % 4
             self._current_turn = (next_player,next_direction)
         except StopIteration:
             self._current_turn = None
-        return True
+        return
 
     def check_move(self, offset, direction):
         """Check whether a given move is possible for the current player."""
         # Has game ended?
         if self.is_over:
-            print("Check: Game Over.")
-            return False
+            return "invalid move, game is over"
         # Does the chosen direction matter?
         if self.current_direction != ANY:
             direction = self.current_direction
         # Otherwise, is the chosen direction valid?
         elif direction not in [NORTH,EAST,SOUTH,WEST]:
-            print(f"Check: {direction=} not in {[NORTH,WEST,SOUTH,WEST]}.")
-            return False
+            print()
+            return f"invalid move, {NORTH} <= {direction} <= {WEST} not a valid direction."
         # Move is valid if valid offset into the correct direction
-        (max_x,max_y) = self.compute_board_size()
-        max_offset = max_x if direction in [EAST,WEST] else max_y
+        (max_x,max_y) = self.current_board_size
+        max_offset = max_y if direction in [EAST,WEST] else max_x
         if not (0 <= offset <= max_offset):
-            print(f"Check: not (0 <= {offset=} <= {max_offset} for {direction=}.")
-        return True
+            return f"invalid move, offset is not 0 <= {offset} <= {max_offset} (for {direction=})"
+        return ""
 
     def run_console(self):
-        main_text = fixStr("""
-            ~:--------------------------------------:~
+        BAR = "~:--------------------------------------:~"
+        main_text = fixStr(f"""
+            {BAR}
                              Leaves
             """)
         while not self.is_over:
             # Show game state
-            print("~:--------------------------------------:~")
-            print(boxed(str(self)))
-            # Let user make valid move
-            player = ["First","Second"][self.current_player]
-            direction = ["North","East","South","West","Any direction"][self.current_direction]
-            if self.current_direction == ANY:
-                print(fixStr(f"""
-                    Current turn: {player} Player moves {direction}.
-                    Enter initial of cardinal direction
-                    and line offset on board (from top left)
-                    (e.g. 'N1' = move North in 1st column,
-                          'W4' = move West  in 4th row)
-                    """))
-            else:
-                print(fixStr(f"""
-                    Current turn: {player} Player moves {direction}.
-                    Enter line offset on board (from top left)
-                    (e.g. '1' = move {direction} in 1st column,
-                          '4' = move {direction} in 4th row)
-                    """))
+            print(BAR)
+            print(centered(len(BAR),f"Turn {self.current_round}"))
+            print(centered(len(BAR),boxed(centered(len(BAR)-4,str(self.str_tree())))))
             while True:
-                user_input = input("> ")
-                assert self.attempt_move("NESW".index(user_input[0]),int(user_input[1:]))
-                try:
-                    assert self.attempt_move("NESW".index(user_input[0])-1,int(user_input[1:]))
-                    print("success")
-                    break
-                    print("imposibile")
-                except Exception as e: print(f"Error: {e}")
+                # Let user make valid move
+                player = ["░░ First","██ Second","▒▒ Third","▓▓ Fourth"][self.current_player]
+                if self.current_direction == ANY:
+                    print(fixStr(f"""
+                        {player} player
+                        ⟲  *any* direction
+                           (e.g. 'N1' = North ↑ in 1st column,
+                                 'W4' = West ⟵  in 4th row, etc.)
+                        """))
+                    try:
+                        user_input = input("> ")
+                    except (KeyboardInterrupt, EOFError):
+                        print("Goodbye ~")
+                        return
+                    try:
+                        offset = int(user_input[1:]) - 1
+                        direction = "NESW".index(user_input[0].upper())
+                        self.make_move(offset,direction)
+                        break
+                    except Exception as e:
+                        print(f"Oops: {e}")
+                        continue
+                else:
+                    dir = ["↑ North","⟶  East","↓ South","⟵  West"][self.current_direction]
+                    print(fixStr(f"""
+                        {player} player
+                        {dir}
+                           (e.g. '1' = {dir} in 1st {"column" if self.current_direction in [NORTH,SOUTH] else "row"})
+                        """))
+                    try:
+                        user_input = input("> ")
+                    except (KeyboardInterrupt, EOFError):
+                        print("Goodbye ~")
+                        return
+                    try:
+                        offset = int(user_input) - 1
+                        self.make_move(offset, "")
+                        break
+                    except Exception as e:
+                        print(f"Oops: {e}")
+                        continue
+        print(BAR)
+        print(centered(len(BAR),boxed(centered(len(BAR)-4,str(self.str_tree())))))
+        print(BAR)
+        print(centered(len(BAR),"Game Over."))
+        print(centered(len(BAR),"Pruned tree:"))
+        print(centered(len(BAR),boxed(centered(len(BAR)-4,str(self.str_pruned())))))
+        scores = " - ".join(f"{score} {['░░','██','▒▒','▓▓'][player]}" for (player,score) in self.current_scores.items())
+        print(centered(len(BAR),f"Scores: {scores}"))
+        winner = self._winner()
+        if winner != -1:
+            print(centered(len(BAR),boxed(centered(len(BAR)-4,fixStr(f"""
+                ⋆｡ﾟ☁｡ {["░░ First","██ Second","▒▒ Third","▓▓ Fourth"][self._winner()]} player won the game! ｡ ﾟ☾｡⋆
+                """)))))
+        else:
+            print(centered(len(BAR),boxed(centered(len(BAR)-4,fixStr(f"""
+                It's a Draw!
+                """)))))
+        print(BAR)
+
+    @staticmethod
+    def _board_size(board_pieces):
+        max_x = max(x for (x,_) in board_pieces)
+        max_y = max(y for (_,y) in board_pieces)
+        return (max_x,max_y)
+
+    @staticmethod
+    def _board_str(board_pieces):
+        def show(x,y):
+            """Given a coordinate, return a way to represent the piece there."""
+            if (x,y) not in board_pieces:
+                return '  '
+            else:
+                piece = board_pieces[(x,y)]
+                return {-1:'[]',0:'░░',1:'██',2:'▒▒',3:'▓▓'}.get(piece, str(piece))#┮┵┾┽
+        (max_x,max_y) = LeavesGame._board_size(board_pieces)
+        string = (
+            "\n".join(
+                "".join(
+                    show(x,y)
+                for x in range(max_x+1) )
+            for y in range(max_y+1) )
+        )
+        return string
+
+    @staticmethod
+    def _board_pruned(board_pieces):
+        """Remove all leaves not attached to a log piece from the board."""
+        valid_pieces = dict()
+        for (x,y) in board_pieces:
+            is_log = board_pieces[(x,y)] == -1
+            has_neighboring_logs = any(board_pieces[(x+dx,y+dy)] == -1
+                                       for (dx,dy) in [(1,0),(0,1),(-1,0),(0,-1)]
+                                       if (x+dx,y+dy) in board_pieces)
+            if is_log or has_neighboring_logs:
+                valid_pieces[(x,y)] = board_pieces[(x,y)]
+        return valid_pieces
 
     def run_pygame(self):
         return # TODO
@@ -239,17 +291,32 @@ def fixStr(string, indent_unit=1):
       indent %= indent_unit
     return '\n'.join(line[indent:] for line in lines).strip('\n')
 
-def boxed(string,rounded=False): # TODO
-        lines = string.split('\n')
-        len_max = max(len(line) for line in lines)
-        string = (
-            ("╭" + len_max*"─" + "╮\n")
-            + "\n".join(
-                f"│{line:<{len(line)-len_max}}│"
-            for line in lines )
-            + ("\n╰" + len_max*"─" + "╯")
-        )
-        return string
+def boxed(string, spritesheet=None):
+    if spritesheet is None:
+        spritesheet = "rounded"
+    sprites = {
+        "square" : " ╶╵└╴─┘┴╷┌│├┐┬┤┼",
+        "rounded": " ╶╵╰╴─╯┴╷╭│├╮┬┤┼", # TODO add more / handle better
+    }[spritesheet]
+    lines = string.split('\n')
+    len_max = max(len(line) for line in lines)
+    string = (
+        f"{sprites[0b1001]}{len_max*sprites[0b0101]}{sprites[0b1100]}\n"
+        + "\n".join(
+            f"{sprites[0b1010]}{line:<{len(line)-len_max}}{sprites[0b1010]}"
+        for line in lines )
+        + f"\n{sprites[0b0011]}{len_max*sprites[0b0101]}{sprites[0b0110]}"
+    )
+    return string
+
+def centered(width, string):
+    lines = string.split('\n')
+    string = (
+        "\n".join(
+            f"{line:^{width}}"
+        for line in lines )
+    )
+    return string
 
 # END   FUNCTIONS
 
@@ -257,12 +324,10 @@ def boxed(string,rounded=False): # TODO
 # BEGIN MAIN
 
 def main():
-    print("hi")
-
-    game = LeavesGame()
+    game = LeavesGame(pieces_per_player=2)
+    #game = LeavesGame()
     game.run_console()
-
-    print("bye")
+    return
 
 if __name__=="__main__": main()
 
