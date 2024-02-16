@@ -12,7 +12,9 @@ If you want to recap the rules:
 
 
 # BEGIN IMPORTS
-# No imports
+
+from collections import Counter # Counting how many pieces of each player
+
 # END   IMPORTS
 
 
@@ -36,10 +38,15 @@ WEST  = 3
 
 class LeavesGame:
     def __init__(self):
-        self._board_pieces = {(0,y):-1 for y in range(5)} # TODO
-        self._turn_sequence = self._make_sequence(2,10,2)
-        self._current_player = next(self._turn_sequence)
-        self._current_direction = ANY
+        self._log_pieces = 5
+        self._players = 2
+        self._pieces_per_player = 10
+        # A generator of player IDs
+        self._player_sequence = self._produce_sequence()
+        # A Player ID and direction
+        self._current_turn = (next(self._player_sequence), ANY)
+        # A dictionary of board pieces with their coordinates
+        self._board_pieces = { (0,y):-1 for y in range(self._log_pieces) }
 
     def __repr__(self):
         def show(x,y):
@@ -49,7 +56,7 @@ class LeavesGame:
             else:
                 piece = self._board_pieces[(x,y)]
                 return {-1:'╋',0:'░',1:'█',2:'▒',3:'▓'}.get(piece, str(piece))
-        (max_x,max_y) = self.current_board_size
+        (max_x,max_y) = self.compute_board_size()
         string = (
           ("╭" + (max_x+1)*"─" + "╮\n")
           + "\n".join(
@@ -65,52 +72,34 @@ class LeavesGame:
 
     @property
     def current_player(self):
-        return self._current_player
+        return (self._current_turn[0] if self._current_turn else None)
 
     @property
     def current_direction(self):
-        return self._current_direction
+        return (self._current_turn[1] if self._current_turn else None)
 
     @property
-    def current_board_size(self):
+    def current_turn_number(self):
+        return len(self._board_pieces) - self._log_pieces + 1
+
+    def compute_board_size(self):
         max_x = max(x for (x,_) in self._board_pieces)
         max_y = max(y for (_,y) in self._board_pieces)
         return (max_x,max_y)
 
-    def attempt_move(offset, direction):
-        """Try to make a move for the current player, return True if successful and False otherwise."""
-        if not possible_move(offset, direction):
-          return False
-        if self._current_direction == ANY:
-            direction = self._current_direction
-        # Modify board
-        return True
+    def compute_scores(self):
+        scores = Counter(self._pruned().values())
+        scores.pop(-1)
+        return scores
 
-    def possible_move(offset, direction):
-        """Check whether a given move is possible for the current player."""
-        if self._current_direction == ANY:
-            if direction not in [NORTH,WEST,SOUTH,WEST]:
-                return False
-            else:
-                direction = self._current_direction
-        (max_x,max_y) = self.current_board_size
-        max_offset = max_x if direction in [EAST,WEST] else max_y
-        return 0 <= offset <= max_offset
-
-    def prune(self):
-        """Remove all leaves not attached to a log piece from the board."""
-        for (x,y) in self._board_pieces:
-            any_neighboring_logs = any(self._board[(x+dx,y+dy)] == -1
-                                       for (dx,dy) in [(1,0),(0,1),(-1,0),(0,-1)]
-                                       if (x+dx,y+dy) in self._board)
-            if not any_neighboring_logs:
-                self._board_pieces.pop((x,y))
-        return
-
-    @staticmethod
-    def _make_sequence(players, pieces_per_player, turns_per_player):
-        pieces_remaining = [pieces_per_player for _ in range(players)]
+    def _produce_sequence(self, players=None, pieces_per_player=None):
+        if players is None:
+            players = self._players
+        if pieces_per_player is None:
+            pieces_per_player = self._pieces_per_player
+        turns_per_player = 2
         player = 0
+        pieces_remaining = [pieces_per_player for _ in range(players)]
         pieces_remaining[player] -= 1
         yield player
         while any(pieces != 0 for pieces in pieces_remaining):
@@ -119,6 +108,52 @@ class LeavesGame:
                 if pieces_remaining[player] == 0: break
                 pieces_remaining[player] -= 1
                 yield player
+
+    def attempt_move(offset, direction):
+        """Try to make a move for the current player, return True if successful and False otherwise."""
+        if not possible_move(offset, direction):
+            return False
+        # Modify board
+        current_piece = self.current_player
+        match (direction if self.current_direction == ANY else self.current_direction):
+        case "NORTH":
+            pass # TODO
+        case "EAST":
+            pass
+        case "SOUTH":
+            pass
+        case "WEST":
+            pass
+        try:
+            self._current_player = next(self._turn_sequence)
+        except StopIteration:
+
+        return True
+
+    def possible_move(offset, direction):
+        """Check whether a given move is possible for the current player."""
+        if self.current_player is None:
+            return False
+        if self.current_direction == ANY:
+            if direction not in [NORTH,WEST,SOUTH,WEST]:
+                return False
+            else:
+                direction = self.current_direction
+        (max_x,max_y) = self.compute_board_size()
+        max_offset = max_x if direction in [EAST,WEST] else max_y
+        return 0 <= offset <= max_offset
+
+    def _pruned(self):
+        """Remove all leaves not attached to a log piece from the board."""
+        valid_pieces = self._board_pieces.copy()
+        for (x,y) in self._board_pieces:
+            #is_log_itself = self._board_pieces[(x+dx,y+dy)] == -1
+            has_neighboring_logs = any(self._board_pieces[(x+dx,y+dy)] == -1
+                                       for (dx,dy) in [(1,0),(0,1),(-1,0),(0,-1)]
+                                       if (x+dx,y+dy) in self._board_pieces)
+            if not has_neighboring_logs:
+                valid_pieces.pop((x,y))
+        return valid_pieces
 
 # END   CLASSES
 
