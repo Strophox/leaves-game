@@ -18,6 +18,7 @@ TODO :
 
 # BEGIN IMPORTS
 
+import pygame as pg
 from collections import Counter # Counting how many pieces of each player
 
 # END   IMPORTS
@@ -52,6 +53,13 @@ class LeavesGame:
         self._current_turn = (next(self._player_sequence), ANY)
         # A dictionary of board pieces with their coordinates
         self._board_pieces = { (0,y):-1 for y in range(self._log_pieces) }
+        self._piecetypes = {
+            -1: ("[]","Log"),
+            0: ("░░","First player"),
+            1: ("██","Second player"),
+            2: ("▒▒","Third player"),
+            3: ("▓▓","Fourth player"),
+        } # TODO handle more cases, ┮┵┾┽
 
     @property
     def is_over(self):
@@ -80,7 +88,7 @@ class LeavesGame:
         scores.pop(-1)
         return scores
 
-    def _winner(self):
+    def _compute_winner(self):
       scores = self.current_scores
       best_score = max(scores.values())
       if list(scores.values()).count(best_score) == 1:
@@ -106,10 +114,12 @@ class LeavesGame:
                 yield player
 
     def str_tree(self):
-        return LeavesGame._board_str(self._board_pieces)
+        return LeavesGame._board_str(self._board_pieces,
+                                     lambda p: self._piecetypes[p][0])
 
     def str_pruned(self):
-        return LeavesGame._board_str(LeavesGame._board_pruned(self._board_pieces))
+        return LeavesGame._board_str(LeavesGame._board_pruned(self._board_pieces),
+                                     lambda p: self._piecetypes[p][0])
 
     def make_move(self, offset, direction):
         """Try to make a move for the current player, return True if successful and False otherwise."""
@@ -120,10 +130,10 @@ class LeavesGame:
         (max_x,max_y) = self.current_board_size
         move_direction = direction if self.current_direction == ANY else self.current_direction
         ((x,y),(dx,dy)) = {
-            NORTH: ((offset,max_y), ( 0,-1)),
-            EAST : ((0,offset),     ( 1, 0)),
-            SOUTH: ((offset,0),     ( 0, 1)),
-            WEST : ((max_x,offset), (-1, 0)),
+            NORTH: ((offset,0),     ( 0, 1)),
+            EAST : ((max_x,offset), (-1, 0)),
+            SOUTH: ((offset,max_y), ( 0,-1)),
+            WEST : ((0,offset),     ( 1, 0)),
         }[move_direction]
         # Skip empty tiles at the beginning
         while (x,y) not in self._board_pieces:
@@ -171,75 +181,85 @@ class LeavesGame:
 
     def run_console(self):
         BAR = "~:--------------------------------------:~"
-        main_text = fixStr(f"""
+        W = len(BAR)
+        main_text = fixStrs(f"""
             {BAR}
-                             Leaves
+            {centered(W,"Leaves")}
             """)
         while not self.is_over:
             # Show game state
-            print(BAR)
-            print(centered(len(BAR),f"Turn {self.current_round}"))
-            print(centered(len(BAR),boxed(centered(len(BAR)-4,str(self.str_tree())))))
+            status_text = fixStrs(
+                f"""
+                {BAR}
+                {centered(W,f"Turn {self.current_round}")}
+                """,
+                centered(W,boxed(centered(W-4,str(self.str_tree())))),
+            )
+            print(status_text)
             while True:
                 # Let user make valid move
-                player = ["░░ First","██ Second","▒▒ Third","▓▓ Fourth"][self.current_player]
+                (sprite,playername) = self._piecetypes[self.current_player]
+                playername = f"{sprite} {playername}"
                 if self.current_direction == ANY:
-                    print(fixStr(f"""
-                        {player} player
+                    query_text = fixStrs(
+                        f"""
+                        {playername}
                         ⟲  *any* direction
-                           (e.g. 'N1' = North ↑ in 1st column,
-                                 'W4' = West ⟵  in 4th row, etc.)
-                        """))
-                    try:
-                        user_input = input("> ")
-                    except (KeyboardInterrupt, EOFError):
-                        print("Goodbye ~")
-                        return
-                    try:
-                        offset = int(user_input[1:]) - 1
-                        direction = "NESW".index(user_input[0].upper())
-                        self.make_move(offset,direction)
-                        break
-                    except Exception as e:
-                        print(f"Oops: {e}")
-                        continue
+                           (e.g. 'N1' = North ↓ in 1st column,
+                                 'W4' = West ⟶  in 4th row, etc.)
+                        """,
+                    )
+                    parse = lambda user_input: (
+                        int(user_input[1:]) - 1,
+                        "NESW".index(user_input[0].upper()) )
                 else:
-                    dir = ["↑ North","⟶  East","↓ South","⟵  West"][self.current_direction]
-                    print(fixStr(f"""
-                        {player} player
-                        {dir}
+                    query_text = fixStrs(
+                        f"""
+                        {playername}
+                        {["↓ North","⟵  East","↑ South","⟶  West"][self.current_direction]}
                            (e.g. '1' = {dir} in 1st {"column" if self.current_direction in [NORTH,SOUTH] else "row"})
-                        """))
-                    try:
-                        user_input = input("> ")
-                    except (KeyboardInterrupt, EOFError):
-                        print("Goodbye ~")
-                        return
-                    try:
-                        offset = int(user_input) - 1
-                        self.make_move(offset, "")
-                        break
-                    except Exception as e:
-                        print(f"Oops: {e}")
-                        continue
-        print(BAR)
-        print(centered(len(BAR),boxed(centered(len(BAR)-4,str(self.str_tree())))))
-        print(BAR)
-        print(centered(len(BAR),"Game Over."))
-        print(centered(len(BAR),"Pruned tree:"))
-        print(centered(len(BAR),boxed(centered(len(BAR)-4,str(self.str_pruned())))))
-        scores = " - ".join(f"{score} {['░░','██','▒▒','▓▓'][player]}" for (player,score) in self.current_scores.items())
-        print(centered(len(BAR),f"Scores: {scores}"))
-        winner = self._winner()
+                        """,
+                    )
+                    parse = lambda user_input: (
+                        int(user_input) - 1,
+                        "")
+                print(query_text)
+                try:
+                    user_input = input("> ")
+                except (KeyboardInterrupt, EOFError):
+                    print("Goodbye ~")
+                    return
+                try:
+                    self.make_move(*parse(user_input))
+                    break
+                except Exception as e:
+                    print(f"Oops: {e}")
+                    continue
+        winner = self._compute_winner()
         if winner != -1:
-            print(centered(len(BAR),boxed(centered(len(BAR)-4,fixStr(f"""
-                ⋆｡ﾟ☁｡ {["░░ First","██ Second","▒▒ Third","▓▓ Fourth"][self._winner()]} player won the game! ｡ ﾟ☾｡⋆
-                """)))))
+            (sprite,playername) = self._piecetypes[winner]
+            winner_text = centered(W,boxed(centered(W-4,
+                                   f"⋆｡ﾟ☁｡ {sprite} {playername} won the game! {sprite} ｡ ﾟ☾｡⋆")))
         else:
-            print(centered(len(BAR),boxed(centered(len(BAR)-4,fixStr(f"""
-                It's a Draw!
-                """)))))
-        print(BAR)
+            (sprite,_) = self._piecetypes[winner]
+            winner_text = centered(W,boxed(centered(W-4,
+                                   f"{sprite} It's a Draw! {sprite}")))
+        end_text = fixStrs(
+            f"""
+            {BAR}
+            {centered(W,boxed(centered(W-4,str(self.str_tree()))))}
+            {BAR}
+            {centered(W,"Game Over.")}
+            {centered(W,"Pruned tree:")}
+            """,
+            centered(W,boxed(centered(W-4,str(self.str_pruned())))),
+            f"""
+            {centered(W,f"Scores: {' - '.join(f'{score} {self._piecetypes[playerid][0]}' for (playerid,score) in self.current_scores.items())}")}
+            {winner_text}
+            {BAR}
+            """,
+        )
+        print(end_text)
 
     @staticmethod
     def _board_size(board_pieces):
@@ -248,14 +268,13 @@ class LeavesGame:
         return (max_x,max_y)
 
     @staticmethod
-    def _board_str(board_pieces):
+    def _board_str(board_pieces, sprite_of):
         def show(x,y):
             """Given a coordinate, return a way to represent the piece there."""
-            if (x,y) not in board_pieces:
-                return '  '
+            if (x,y) in board_pieces:
+                return sprite_of(board_pieces[(x,y)])
             else:
-                piece = board_pieces[(x,y)]
-                return {-1:'[]',0:'░░',1:'██',2:'▒▒',3:'▓▓'}.get(piece, str(piece))#┮┵┾┽
+                return '  '
         (max_x,max_y) = LeavesGame._board_size(board_pieces)
         string = (
             "\n".join(
@@ -280,6 +299,58 @@ class LeavesGame:
         return valid_pieces
 
     def run_pygame(self):
+        import pygame
+        pygame.init()
+        win = pygame.display.set_mode((1280, 720))
+        pygame.display.set_caption("Squarey")
+        x = 100
+        y = 100
+        baddyX = 300
+        baddyY = 300
+        vel = 6
+        baddyVel = 4
+        run = True
+        def draw_game():
+            win.fill((0, 0, 0))
+            pygame.draw.rect(win, (0, 0, 255), (x, y, 20, 20))
+            pygame.draw.rect(win, (255, 0, 0), (baddyX, baddyY, 40, 40))
+            pygame.display.update()
+
+        while run:
+            pygame.time.delay(100)
+
+            if baddyX < x - 10:
+                baddyX = baddyX + baddyVel
+            elif baddyX > x + 10:
+                baddyX = baddyX - baddyVel
+            elif baddyY < y - 10:
+                baddyY = baddyY + baddyVel
+            elif baddyY > y + 10:
+                baddyY = baddyY - baddyVel
+            else:
+                run = False
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    run = False
+
+            keys = pygame.key.get_pressed()
+
+            if keys[pygame.K_LEFT]:
+                x -= vel
+
+            if keys[pygame.K_RIGHT]:
+                x += vel
+
+            if keys[pygame.K_UP]:
+                y -= vel
+
+            if keys[pygame.K_DOWN]:
+                y += vel
+
+            draw_game()
+
+        pygame.quit()
         return # TODO
 
 # END   CLASSES
@@ -287,13 +358,21 @@ class LeavesGame:
 
 # BEGIN FUNCTIONS
 
-def fixStr(string, indent_unit=1):
+def fixStrs(*strings):
     """Remove indent and strip newlines from multiline string."""
-    lines = string.split('\n')
-    indent = min(len(line) - len(line.lstrip()) for line in lines if line)
-    if indent_unit != 1:
-      indent %= indent_unit
-    return '\n'.join(line[indent:] for line in lines).strip('\n')
+    def dedent(string, indent_unit=1):
+        lines = string.split('\n')
+        indent = min(len(line) - len(line.lstrip()) for line in lines if line)
+        if indent_unit != 1:
+          indent %= indent_unit
+        string = '\n'.join(
+            line[indent:] for line in lines
+        ).strip('\n')
+        return string
+    string = '\n'.join(
+        pstring for string in strings if (pstring := dedent(string).strip('\n'))
+    )
+    return string
 
 def boxed(string, spritesheet=None):
     if spritesheet is None:
