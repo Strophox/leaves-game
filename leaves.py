@@ -286,7 +286,7 @@ def glueStrs(*strings):
     )
     return string
 
-def run_console(self):
+def run_console(game):
     BAR = "~:--------------------------------------:~"
     W = len(BAR)
     main_text = glueStrs(
@@ -294,11 +294,11 @@ def run_console(self):
         alnStr(f'^{W}', "Leaves"),
     )
     print(main_text)
-    while not self.is_over:
+    while not game.is_over:
         # Show game state
-        (sprite,playername) = self.piecetypes[self.current_player]
+        (sprite,playername) = game.piecetypes[game.current_player]
         playername = f"{sprite} {playername}"
-        if self.current_direction == ANY:
+        if game.current_direction == ANY:
             player_text = (
                 alnStr(f'^{W}', dedentStr(f"""
                 {playername}
@@ -315,7 +315,7 @@ def run_console(self):
                 int(user_input[1:]) - 1,
                 "NESW".index(user_input[0].upper()) )
         else:
-            direction = ["↓ North","⟵  East","↑ South","⟶  West"][self.current_direction]
+            direction = ["↓ North","⟵  East","↑ South","⟶  West"][game.current_direction]
             player_text = glueStrs(
                 alnStr(f'^{W}', dedentStr(f"""
                 {playername}
@@ -324,24 +324,24 @@ def run_console(self):
             )
             ps_text = (
                 alnStr('<', dedentStr(f"""
-                (e.g. '1' = {direction} in 1st {"column" if self.current_direction in [NORTH,SOUTH] else "row"})
+                (e.g. '1' = {direction} in 1st {"column" if game.current_direction in [NORTH,SOUTH] else "row"})
                 """))
             )
             parse = lambda user_input: (
                 int(user_input) - 1,
-                self.current_direction)
+                game.current_direction)
         status_text = glueStrs(
             alnStr('<', BAR),
-            alnStr(f'^{W}', f"Turn {self.current_turn}"),
+            alnStr(f'^{W}', f"Turn {game.current_turn}"),
             alnStr(f'^{W}', player_text),
-            alnStr(f'^{W}', boxStr(alnStr(f'^{W-4}', self.str_tree()))),
+            alnStr(f'^{W}', boxStr(alnStr(f'^{W-4}', game.str_tree()))),
             alnStr('<',ps_text),
         )
         print(status_text)
         while True:
             try:
                 user_input = input("> ")
-                self.make_move(*parse(user_input))
+                game.make_move(*parse(user_input))
                 break
             except (KeyboardInterrupt, EOFError):
                 print("Goodbye")
@@ -349,20 +349,20 @@ def run_console(self):
             except Exception as e:
                 print(f"Oops: {e}")
                 continue
-    winner = self.compute_winner()
+    winner = game.compute_winner()
     if winner != -1:
-        (sprite,playername) = self.piecetypes[winner]
+        (sprite,playername) = game.piecetypes[winner]
         winner_text = f"⋆｡ﾟ☁｡ {sprite} {playername} won the game! {sprite} ｡ ﾟ☾｡⋆"
     else:
-        (sprite,_) = self._piecetypes[winner]
+        (sprite,_) = game.piecetypes[winner]
         winner_text = f"{sprite} It's a Draw! {sprite}"
     end_text = glueStrs(
         alnStr('<',BAR),
-        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', self.str_tree()))),
+        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.str_tree()))),
         alnStr(f'^{W}',"Game Over."),
         alnStr(f'^{W}',"Pruned tree:"),
-        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', self.str_pruned()))),
-        alnStr(f'^{W}',f"Player scores: {' - '.join(f'{score} {self.piecetypes[playerid][0]}' for (playerid,score) in self.current_scores.items())}"),
+        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.str_pruned()))),
+        alnStr(f'^{W}',f"Player scores: {' - '.join(f'{score} {game.piecetypes[playerid][0]}' for (playerid,score) in game.current_scores.items())}"),
         alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', winner_text))),
         alnStr(f'^{W}',BAR),
     )
