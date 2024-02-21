@@ -41,209 +41,207 @@ WEST  = 3
 
 # BEGIN CLASSES
 
+class LeavesBoard:
+    def __init__(self, pieces):
+        self._pieces = pieces
+
+    def __contains__(self, coordinate):
+        return self._pieces.__contains__(coordinate)
+
+    def show(self, tilemap):
+        (w,h) = self.size
+        string = (
+            "\n".join(
+                "".join(
+                    tilemap(self._pieces.get((x,y)))
+                for x in range(w) )
+            for y in range(h) )
+        )
+        return string
+
+    @property
+    def size(self):
+        max_x = max(x for (x,_) in self._pieces)
+        max_y = max(y for (_,y) in self._pieces)
+        return (max_x + 1, max_y + 1)
+
+    def pruned(self):
+        """Remove all leaves not attached to a log piece from the board."""
+        def is_log(x,y):
+            return self._pieces[(x,y)] == -1
+        def has_log_neighbor(x,y):
+           return any(is_log(x+dx,y+dy)
+                      for (dx,dy) in [(1,0),(0,1),(-1,0),(0,-1)]
+                      if (x+dx,y+dy) in self._pieces)
+        unpruned_pieces = dict()
+        for (x,y),piece in self._pieces.items():
+            if is_log(x,y) or has_log_neighbor(x,y):
+                unpruned_pieces[(x,y)] = piece
+        return LeavesBoard(unpruned_pieces)
+
+    def counts(self):
+        return dict(Counter(self.pruned()._pieces.values()))
+
+    def realign(self):
+        min_x = min(x for (x,_) in self._pieces)
+        min_y = min(y for (_,y) in self._pieces)
+        pieces = self._pieces
+        # Fix horizontal Misalignment
+        if min_x < 0:
+            new_pieces = dict()
+            for (x,y),piece in pieces.items():
+                new_pieces[(x - min_x, y)] = piece
+            pieces = new_pieces
+        # Fix vertical Misalignment
+        if min_y < 0:
+            new_pieces = dict()
+            for (x,y),piece in pieces.items():
+                  new_pieces[(x, y - min_y)] = piece
+            pieces = new_pieces
+        self._pieces = pieces
+        return None
+
 class LeavesGame:
     def __init__(self, log_pieces=5, players=2, pieces_per_player=10):
         self._log_pieces = log_pieces
         self._players = players
         self._pieces_per_player = pieces_per_player
-        # A generator of player IDs
-        self._player_sequence = self._produce_sequence()
-        # A Player ID and direction, or None
+        self._remaining_pieces = [pieces_per_player for _ in range(players)]
+        def make_sequence(players, turns_per_player):
+            player = 0
+            while True:
+                for _ in range(turns_per_player):
+                    yield player
+                player = (player+1) % players
+        self._player_sequence = make_sequence(players, 2)
+        next(self._player_sequence)
         self._current_turn = (next(self._player_sequence), ANY)
-        # A dictionary of board pieces with their coordinates
-        self._board_pieces = { (0,y):-1 for y in range(self._log_pieces) }
-        self.piecetypes = {
-            -1: ("[]","Log"),
-            0: ("░░","First player"),
-            1: ("██","Second player"),
-            2: ("▒▒","Third player"),
-            3: ("▓▓","Fourth player"),
-        } # TODO handle more cases, ┮┵┾┽
+        self._board = LeavesBoard({ (0,y):-1 for y in range(log_pieces) })
+
+    @property
+    def players(self):
+        """How many players are playing the game."""
+        return self._players
+
+    @property
+    def pieces_per_player(self):
+        """How many pieces each player starts with."""
+        return self._pieces_per_player
 
     @property
     def is_over(self):
+        """Whether a round of playing the game is finished."""
         return (self._current_turn is None)
 
     @property
-    def current_player(self):
-        return (None if self.is_over else self._current_turn[0])
-
-    @property
-    def current_direction(self):
-        return (None if self.is_over else self._current_turn[1])
-
-    @property
     def current_turn(self):
-        return (1 + len(self._board_pieces) - self._log_pieces)
+        """Integer ID of the current player and ID of their direction."""
+        return self._current_turn
 
     @property
-    def total_turns(self):
-        return (self._players * self._pieces_per_player)
+    def current_turn_number(self):
+        """Integer ID of the current player and ID of their direction."""
+        return (self._players*self._pieces_per_player - sum(self._remaining_pieces))
+
+    @property
+    def remaining_pieces(self):
+        """"""
+        return self._remaining_pieces.copy()
 
     @property
     def current_board_size(self):
-        return LeavesGame._board_size(self._board_pieces)
+        return self._board.size
 
-    @property
-    def current_scores(self):
-        pruned_board = LeavesGame._board_pruned(self._board_pieces)
-        scores = dict(Counter(pruned_board.values()))
-        scores.pop(-1)
+    def scores(self):
+        scores = self._board.counts()
+        scores.pop(-1) # Log pieces have id = -1
         return scores
 
-    def compute_winner(self):
-      scores = self.current_scores
-      best_score = max(scores.values())
-      if list(scores.values()).count(best_score) == 1:
-        return max(scores, key=scores.get)
-      else:
-        return -1
+    def compute_winners(self):
+        if not self.is_over:
+            return []
+        scores = self.scores()
+        best_score = max(scores.values())
+        winners = [player for (player,score) in scores.items() if score == best_score]
+        return winners
 
-    def _produce_sequence(self, players=None, pieces_per_player=None):
-        if players is None:
-            players = self._players
-        if pieces_per_player is None:
-            pieces_per_player = self._pieces_per_player
-        turns_per_player = 2
-        player = 0
-        pieces_remaining = [pieces_per_player for _ in range(players)]
-        pieces_remaining[player] -= 1
-        yield player
-        while any(pieces != 0 for pieces in pieces_remaining):
-            player = (player + 1) % players
-            for _ in range(turns_per_player):
-                if pieces_remaining[player] == 0: break
-                pieces_remaining[player] -= 1
-                yield player
+    def str_board(self, pruned=False, tilemap=None):
+        if tilemap is None:
+            tilemap = {None: '  ', -1: '[]', 0: '░░', 1: '██'}.get
+        board = self._board.pruned() if pruned else self._board
+        string = board.show(tilemap)
+        return string
 
-    def str_tree(self):
-        return LeavesGame._board_str(self._board_pieces,
-                                     lambda p: self.piecetypes[p][0])
-
-    def str_pruned(self):
-        return LeavesGame._board_str(LeavesGame._board_pruned(self._board_pieces),
-                                     lambda p: self.piecetypes[p][0])
-
-    def make_move(self, offset, direction):
+    def make_move(self, offset, new_direction):
         """Try to make a move for the current player, return True if successful and False otherwise."""
-        err = self.check_move(offset, direction)
+        err = self.check_move(offset, new_direction)
         if err:
             raise ValueError(err)
+        (player,direction) = self._current_turn
         # Modify board
-        (max_x,max_y) = self.current_board_size
+        (w,h) = self._board.size
         ((x,y),(dx,dy)) = {
-            NORTH: ((offset,0),     ( 0, 1)),
-            EAST : ((max_x,offset), (-1, 0)),
-            SOUTH: ((offset,max_y), ( 0,-1)),
-            WEST : ((0,offset),     ( 1, 0)),
-        }[direction]
+            NORTH: ((offset,0),   ( 0, 1)),
+            EAST : ((w-1,offset), (-1, 0)),
+            SOUTH: ((offset,h-1), ( 0,-1)),
+            WEST : ((0,offset),   ( 1, 0)),
+        }[new_direction]
         # Skip empty tiles at the beginning
-        while (x,y) not in self._board_pieces:
+        while (x,y) not in self._board:
             x += dx
             y += dy
         # Start moving first group of pieces
-        moving_piece = self.current_player
+        moving_piece = player
         while moving_piece is not None:
-            (moving_piece, self._board_pieces[(x,y)]) = (self._board_pieces.get((x,y)), moving_piece)
+            (moving_piece, self._board._pieces[(x,y)]) = (self._board._pieces.get((x,y)), moving_piece)
             x += dx
             y += dy
-        self._board_pieces = LeavesGame._board_realigned(self._board_pieces)
+        self._board.realign()
         # Update internal state of whose turn it is
         try:
             next_player = next(self._player_sequence)
-            next_direction = ANY if next_player != self.current_player else (direction + 1) % 4
+            next_direction = ANY if next_player != player else (new_direction + 1) % 4
+            self._remaining_pieces[self._current_turn[0]] -= 1
             self._current_turn = (next_player,next_direction)
+            if sum(self._remaining_pieces) == 0:
+                raise StopIteration
         except StopIteration:
             self._current_turn = None
         return
 
-    def check_move(self, offset, direction):
+    def check_move(self, offset, new_direction):
         """Check whether a given move is possible for the current player."""
         # Has game ended?
-        if not isinstance(offset, int) or not isinstance(direction, int):
-            return "invalid arguments to function expecting two ints"
+        if not isinstance(offset, int) or not isinstance(new_direction, int):
+            return "invalid arguments to make move with"
         if self.is_over:
-            return "invalid move, game is over"
+            return "game is over, no moves allowed"
         # Does the chosen direction matter?
-        if self.current_direction != ANY and direction != self.current_direction:
-            return f"invalid move, direction {direction} != {self.current_direction}"
+        (player,direction) = self._current_turn
+        if direction != ANY and new_direction != direction:
+            return f"invalid move, direction {new_direction} does not match {direction}"
         # Otherwise, is the chosen direction valid?
-        elif direction not in [NORTH,EAST,SOUTH,WEST]:
-            return f"invalid move, {NORTH} <= {direction} <= {WEST} not a valid direction"
+        elif new_direction not in [NORTH,EAST,SOUTH,WEST]:
+            return f"invalid move, {NORTH} <= {new_direction} <= {WEST} not a valid direction"
         # Move is valid if valid offset into the correct direction
-        (max_x,max_y) = self.current_board_size
-        max_offset = max_y if direction in [EAST,WEST] else max_x
-        if not (0 <= offset <= max_offset):
-            return f"invalid move, offset is not 0 <= {offset} <= {max_offset} (for {direction=})"
+        (w,h) = self._board.size
+        max_len = h if new_direction in [EAST,WEST] else w
+        if not (0 <= offset < max_len):
+            return f"invalid move, offset is not 0 <= {offset} <= {max_len} (for {new_direction=})"
         return ""
-
-    @staticmethod
-    def _board_size(board_pieces):
-        max_x = max(x for (x,_) in board_pieces)
-        max_y = max(y for (_,y) in board_pieces)
-        return (max_x,max_y)
-
-    @staticmethod
-    def _board_str(board_pieces, sprite_of):
-        def show(x,y):
-            """Given a coordinate, return a way to represent the piece there."""
-            if (x,y) in board_pieces:
-                return sprite_of(board_pieces[(x,y)])
-            else:
-                return '  '
-        (max_x,max_y) = LeavesGame._board_size(board_pieces)
-        string = (
-            "\n".join(
-                "".join(
-                    show(x,y)
-                for x in range(max_x+1) )
-            for y in range(max_y+1) )
-        )
-        return string
-
-    @staticmethod
-    def _board_realigned(board_pieces):
-        min_x = min(x for (x,_) in board_pieces)
-        min_y = min(y for (_,y) in board_pieces)
-        # Fix horizontal Misalignment
-        if min_x < 0:
-            new_board_pieces = dict()
-            for (x,y), tile in board_pieces.items():
-                  new_board_pieces[(x - min_x, y)] = tile
-            board_pieces = new_board_pieces
-        # Fix vertical Misalignment
-        if min_y < 0:
-            new_board_pieces = dict()
-            for (x,y), tile in board_pieces.items():
-                  new_board_pieces[(x, y - min_y)] = tile
-            board_pieces = new_board_pieces
-        return board_pieces
-
-    @staticmethod
-    def _board_pruned(board_pieces):
-        """Remove all leaves not attached to a log piece from the board."""
-        valid_pieces = dict()
-        for (x,y) in board_pieces:
-            is_log = board_pieces[(x,y)] == -1
-            has_neighboring_logs = any(board_pieces[(x+dx,y+dy)] == -1
-                                       for (dx,dy) in [(1,0),(0,1),(-1,0),(0,-1)]
-                                       if (x+dx,y+dy) in board_pieces)
-            if is_log or has_neighboring_logs:
-                valid_pieces[(x,y)] = board_pieces[(x,y)]
-        return valid_pieces
 
 # END   CLASSES
 
 
 # BEGIN FUNCTIONS
 
-def boxStr(string, spritesheet=None):
-    if spritesheet is None:
-        spritesheet = "rounded"
+def boxStr(string, style=None):
+    if style is None:
+        style = "rounded"
     sprites = {
         "square" : " ╶╵└╴─┘┴╷┌│├┐┬┤┼",
         "rounded": " ╶╵╰╴─╯┴╷╭│├╮┬┤┼", # TODO add more / handle better
-    }[spritesheet]
+    }[style]
     lines = string.split('\n')
     len_max = max(len(line) for line in lines)
     string = (
@@ -287,61 +285,78 @@ def glueStrs(*strings):
     return string
 
 def run_console(game):
-    BAR = "~:--------------------------------------:~"
+    PIECETYPES = {
+        None: (' ',"(empty)"),
+        -1: ("[]","Log"),
+        0: ("░░","First player"),
+        1: ("██","Second player"),
+        2: ("▒▒","Third player"),
+        3: ("▓▓","Fourth player"),
+    }
+    tilemap = lambda piece: PIECETYPES[piece][0]
+    BAR = "~:-------------------------------------------:~"
     W = len(BAR)
-    main_text = glueStrs(
+    text_title = glueStrs(
         alnStr('', BAR),
-        alnStr(f'^{W}', "Leaves"),
+        alnStr(f'^{W}', dedentStr(f"""
+        ,_,   ,____   __   ,_    ,,____  ___
+        | |   | |_   / /\  \ \  / | |_  ( (`
+        |_|__ |_|__ /_/--\  \_\/  |_|__ _)_)
+        """)),
+        alnStr(f'^{W}', "Leaves - abstract strategy game."),
     )
-    print(main_text)
+    print(text_title)
     while not game.is_over:
+        (player,direction) = game.current_turn
         # Show game state
-        (sprite,playername) = game.piecetypes[game.current_player]
-        playername = f"{sprite} {playername}"
-        if game.current_direction == ANY:
-            player_text = (
+        (psprite,pname) = PIECETYPES[player]
+        text_player = f"{psprite} {pname}"
+        if direction == ANY:
+            text_turn = (
                 alnStr(f'^{W}', dedentStr(f"""
-                {playername}
+                {text_player}
                 ⟳  *any* direction
                 """))
             )
-            ps_text = (
+            text_ex = (
                 alnStr(f'<', dedentStr(f"""
-                (e.g. 'N1' = North ↓ in 1st column,
-                      'W4' = West ⟶  in 4th row, etc.)
+                -> e.g. 'N1' = North ↓ in 1st column,
+                        'W4' = West ⟶  in 4th row, etc.)
                 """))
             )
             parse = lambda user_input: (
                 int(user_input[1:]) - 1,
                 "NESW".index(user_input[0].upper()) )
         else:
-            direction = ["↓ North","⟵  East","↑ South","⟶  West"][game.current_direction]
-            player_text = glueStrs(
+            text_dir = ["↓ North","⟵  East","↑ South","⟶  West"][direction]
+            text_turn = glueStrs(
                 alnStr(f'^{W}', dedentStr(f"""
-                {playername}
-                {direction}
+                {text_player}
+                {text_dir}
                 """))
             )
-            ps_text = (
+            text_ex = (
                 alnStr('<', dedentStr(f"""
-                (e.g. '1' = {direction} in 1st {"column" if game.current_direction in [NORTH,SOUTH] else "row"})
+                -> e.g. '1' = {direction} in 1st {"column" if direction in [NORTH,SOUTH] else "row"})
                 """))
             )
             parse = lambda user_input: (
                 int(user_input) - 1,
-                game.current_direction)
-        status_text = glueStrs(
+                direction)
+        text_status = glueStrs(
             alnStr('<', BAR),
-            alnStr(f'^{W}', f"Turn {game.current_turn}"),
-            alnStr(f'^{W}', player_text),
-            alnStr(f'^{W}', boxStr(alnStr(f'^{W-4}', game.str_tree()))),
-            alnStr('<',ps_text),
+            alnStr(f'^{W}', f"Turn {game.current_turn_number}"),
+            alnStr(f'^{W}', text_turn),
+            alnStr(f'^{W}', boxStr(alnStr(f'^{W-4}', game.str_board()))),
+            alnStr(f'^{W}', f"[pieces left: {' - '.join(f'{remaining} {PIECETYPES[player][0]}' for (player,remaining) in enumerate(game.remaining_pieces))}]"),
+            alnStr('<',(text_ex if game.current_turn_number <= 3 else '')),
         )
-        print(status_text)
+        print(text_status)
         while True:
             try:
                 user_input = input("> ")
-                game.make_move(*parse(user_input))
+                move = parse(user_input)
+                game.make_move(*move)
                 break
             except (KeyboardInterrupt, EOFError):
                 print("Goodbye")
@@ -349,21 +364,20 @@ def run_console(game):
             except Exception as e:
                 print(f"Oops: {e}")
                 continue
-    winner = game.compute_winner()
-    if winner != -1:
-        (sprite,playername) = game.piecetypes[winner]
-        winner_text = f"⋆｡ﾟ☁｡ {sprite} {playername} won the game! {sprite} ｡ ﾟ☾｡⋆"
+    winners = game.compute_winners()
+    if len(winners) == 1:
+        (psprite,pname) = PIECETYPES[winners[0]]
+        text_winners = f"⋆｡ﾟ☁｡ {psprite} {pname} won the game! {psprite} ｡ ﾟ☾｡⋆"
     else:
-        (sprite,_) = game.piecetypes[winner]
-        winner_text = f"{sprite} It's a Draw! {sprite}"
+        text_winners = f"It's a Draw between {', '.join(PIECETYPES[winner][1] for winner in winners)}!"
     end_text = glueStrs(
         alnStr('<',BAR),
-        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.str_tree()))),
+        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.str_board()))),
         alnStr(f'^{W}',"Game Over."),
-        alnStr(f'^{W}',"Pruned tree:"),
-        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.str_pruned()))),
-        alnStr(f'^{W}',f"Player scores: {' - '.join(f'{score} {game.piecetypes[playerid][0]}' for (playerid,score) in game.current_scores.items())}"),
-        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', winner_text))),
+        alnStr(f'^{W}',"Resulting pruned tree:"),
+        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.str_board(pruned=True)))),
+        alnStr(f'^{W}',f"Player scores: {' - '.join(f'{score} {PIECETYPES[player][0]}' for (player,score) in enumerate(game.scores()))}"),
+        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', text_winners))),
         alnStr(f'^{W}',BAR),
     )
     print(end_text)
@@ -377,7 +391,11 @@ def run_pygame(game):
     win = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
     pygame.display.set_caption("Leaves")
     font = pygame.font.SysFont("monospace", 0) # TODO fix size
-    playercols = [ct.PINK,ct.MINT,ct.COLORS['earth']]
+    playercols = [
+        ct.mix(ct.PINK,ct.VIOLET,0.25),
+        ct.mix(ct.MINT,ct.MOSS,0.25),
+        ct.COLORS['earth']
+    ]
 
     # Main fetch-evaluate-draw gameloop
     running = True
@@ -386,7 +404,7 @@ def run_pygame(game):
 
         # Process events
         events = []
-        sentinels = [pygame.VIDEORESIZE,pygame.MOUSEBUTTONDOWN]
+        sentinels = [pygame.VIDEORESIZE, pygame.MOUSEBUTTONDOWN]
         pygame_events = pygame.event.get()
         pygame.key.get_mods()
         for event in pygame_events:
@@ -402,19 +420,20 @@ def run_pygame(game):
         if game.is_over:
             playercol = ct.WHITE
         else:
-            playercol = playercols[game.current_player]
+            (player,direction) = game.current_turn
+            playercol = playercols[player]
+
+        pygame.display.set_caption(f"Leaves - Turn {game.current_turn_number}")
 
         # Figure out basic margin for board drawing
-        # -> m(x|y)(0|1) are the start/end coordinates for the margin
         (W,H) = pygame.display.get_surface().get_size()
         (gameW,gameH) = game.current_board_size
-        (gameW,gameH) = (gameW+1,gameH+1)
         fraction = 0.75
         win_mrg = int( min(W,H)/2 * (1-fraction) )
         ((mx0,my0), (mx1,my1)) = ((win_mrg,win_mrg), (W-win_mrg,H-win_mrg))
+        # -> m(x|y)(0|1) are the start/end coordinates for the margin
 
         # Figure out exact frame within which to draw game
-        # -> f(x|y)(0|1) are the start/end coordinates for the game board frame
         # Game board has wider aspect ratio than allowed frame
         if ((mx1-mx0)/(my1-my0)) <= gameW/gameH:
             sidemrg = int( ((my1-my0) - gameH * (mx1-mx0)/gameW) / 2 )
@@ -423,6 +442,7 @@ def run_pygame(game):
         elif ((mx1-mx0)/(my1-my0)) > gameW/gameH:
             sidemrg = int( ((mx1-mx0) - gameW * (my1-my0)/gameH) / 2 )
             ((fx0,fy0), (fx1,fy1)) = ((mx0+sidemrg,my0), (mx1-sidemrg,my1))
+        # -> f(x|y)(0|1) are the start/end coordinates for the game board frame
 
         """# Draw debug.
         pygame.draw.rect(win, ct.RGB_RED, (mx0-1,my0-1, 1,1))
@@ -474,48 +494,50 @@ def run_pygame(game):
             pass
 
         # Draw tiles
-        for (px,py),piecetype in game._board_pieces.items():
+        for (px,py),piecetype in game._board._pieces.items():
             (x,y) = (fx0 + px*tileSz, fy0 + py*tileSz)
             frac = 0.9
             if piecetype == -1:
-                pygame.draw.rect(win, ct.ORANGE, (x+tileSz*(1-frac)/2,y+tileSz*(1-frac)/2, tileSz*frac,tileSz*frac))
+                pygame.draw.rect(win, ct.mix(ct.ORANGE,ct.GRAY,0.8), (x+tileSz*(1-frac)/2,y+tileSz*(1-frac)/2, tileSz*frac,tileSz*frac))
                 pygame.draw.rect(win, playercols[piecetype], (x+tileSz*(1-frac**2)/2,y+tileSz*(1-frac**2)/2, tileSz*frac**2,tileSz*frac**2))
             else:
                 pygame.draw.rect(win, playercols[piecetype], (x+tileSz*(1-frac)/2,y+tileSz*(1-frac)/2, tileSz*frac,tileSz*frac))
 
         # Draw text
         if game.is_over:
-            winner = game.compute_winner()
-            if winner == -1:
-                fontcol = ct.mix(ct.WHITE,ct.BLACK,2/8)
-                win.blit(
-                  font.render(f"It's a draw!",True,fontcol),
-                  (win_mrg/ratio,win_mrg/ratio)
-                )
+            winners = game.compute_winners()
+            if len(winners) == 1:
+                fontcol = ct.mix(ct.WHITE,playercols[winners[0]],8/8)
+                text_winners = f"Player {1+winners[0]} wins!"
             else:
-                fontcol = ct.mix(ct.WHITE,playercols[winner],8/8)
-                win.blit(
-                  font.render(f"Player {winner} wins!",True,fontcol),
-                  (win_mrg/ratio,win_mrg/ratio)
-                )
+                fontcol = ct.mix(ct.WHITE,ct.BLACK,2/8)
+                text_winners = f"It's a Draw between {', '.join(f'Player {1+winner}' for winner in winners)}!"
+            win.blit(
+                font.render(text_winners,True,fontcol),
+                (win_mrg/ratio,win_mrg/ratio)
+            )
         else:
             ratio = 5
-            if pygame.VIDEORESIZE in events or init:
+            if (pygame.VIDEORESIZE in events) or init:
                 font = pygame.font.SysFont("monospace", round(win_mrg/ratio))
             fontcol = ct.mix(ct.WHITE,playercol,2/8)
+            directionname = ["↓ North","⟵  East","↑ South","⟶  West","⟳ *any direction*"][direction]
             win.blit(
-              font.render(f"Turn {game.current_turn} / {game.total_turns}",True,fontcol),
-              (win_mrg/ratio,win_mrg*1/ratio)
+                font.render(f"Player {1+player}",True,fontcol),
+                (win_mrg/ratio,win_mrg*1/ratio)
             )
             win.blit(
-              font.render(f"Player {game.current_player}",True,fontcol),
-              (win_mrg/ratio,win_mrg*2/ratio)
+                font.render(f"Direction: {directionname}",True,fontcol),
+                (win_mrg/ratio,win_mrg*2/ratio)
             )
-            directionname = ["↓ North","⟵  East","↑ South","⟶  West","⟳ *any*"][game.current_direction]
             win.blit(
-              font.render(f"Direction: {directionname}",True,fontcol),
-              (win_mrg/ratio,win_mrg*3/ratio)
+                font.render(f"Pieces left: {', '.join(f'Player {1+player} = {remaining}' for (player,remaining) in enumerate(game.remaining_pieces))}",True,fontcol),
+                (win_mrg/ratio,fy1+win_mrg*3/ratio)
             )
+            #win.blit(
+                #font.render(f"Player scores: {' - '.join(f'{score} {1+player}' for (player,score) in enumerate(game.scores()))}",True,fontcol),
+                #(win_mrg/ratio,win_mrg*3/ratio)
+            #)
 
         # End stage:
         # Update display immediately and re-enter loop
@@ -532,8 +554,8 @@ def run_pygame(game):
 # BEGIN MAIN
 
 def main():
-    #game = LeavesGame(pieces_per_player=2)
-    game = LeavesGame()
+    game = LeavesGame(pieces_per_player=2)
+    #game = LeavesGame()
     run_console(game)
     run_pygame(game)
     return
