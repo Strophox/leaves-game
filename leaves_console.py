@@ -8,7 +8,6 @@ This script only contains `run` for a console interface.
 # BEGIN IMPORTS
 
 from leaves_consts import Dir,DIR_DATA,DIR_DATA_ANY,PIECE_DATA,PIECE_DATA_EMPTY
-import leaves
 
 # END   IMPORTS
 

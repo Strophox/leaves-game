@@ -9,8 +9,8 @@ TODO :
 
 # BEGIN IMPORTS
 
-from collections import Counter # Counting how many pieces of each player
-from enum import Enum
+from collections import Counter # Counting how many pieces of each player present
+from enum import Enum # Direction ADT
 
 # END   IMPORTS
 
@@ -100,17 +100,7 @@ class Game:
         self._log_pieces = log_pieces
         self._players = players
         self._pieces_per_player = pieces_per_player
-        self._remaining_pieces = [pieces_per_player for _ in range(players)]
-        def make_sequence(players, turns_per_player):
-            player = 0
-            while True:
-                for _ in range(turns_per_player):
-                    yield player
-                player = (player+1) % players
-        self._player_sequence = make_sequence(players, 2)
-        next(self._player_sequence)
-        self._current_turn = (next(self._player_sequence), None)
-        self._board = _Board({ (0,y):-1 for y in range(log_pieces) })
+        self.reset()
 
     @property
     def players(self):
@@ -163,6 +153,20 @@ class Game:
         board = self._board.pruned() if pruned else self._board
         string = board.show(get_tile)
         return string
+
+    def reset(self):
+        self._remaining_pieces = [self._pieces_per_player for _ in range(self._players)]
+        def make_sequence(players, turns_per_player):
+            player = 0
+            while True:
+                for _ in range(turns_per_player):
+                    yield player
+                player = (player+1) % players
+        self._player_sequence = make_sequence(self._players, 2)
+        next(self._player_sequence)
+        self._current_turn = (next(self._player_sequence), None)
+        self._board = _Board({ (0,y):-1 for y in range(self._log_pieces) })
+        return
 
     def make_move(self, offset, new_direction):
         """Try to make a move for the current player, return True if successful and False otherwise."""
