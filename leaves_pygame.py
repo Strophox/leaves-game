@@ -1,6 +1,6 @@
 # BEGIN OUTLINE
 """
-This script only contains `run` for a pygame interface.
+This script contains a `run` function to play a `leaves.Game` in a pygame widget.
 """
 # END   OUTLINE
 
@@ -33,69 +33,78 @@ from leaves_consts import Dir,DIR_DATA,DIR_DATA_ANY,PIECE_DATA,PIECE_DATA_EMPTY
 
 def run(game):
     pygame.init()
-    init = True
-    win = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
+    win = pygame.display.set_mode((1280, 720), pygame.RESIZABLE) # Main window
     pygame.display.set_caption("Leaves")
-    font = pygame.font.SysFont("monospace", 0) # TODO fix size
+    font = pygame.font.SysFont("monospace", 24) # Might be resized
+    show_pruned = False
 
-    # Main fetch-evaluate-draw gameloop
+    # Main fetch-evaluate-draw game loop
     running = True
     while running:
-        pygame.time.wait(32)
+        pygame.time.wait(32) # 32ms = 31.25fps
 
-        # Process events
-        events = []
-        sentinels = [pygame.VIDEORESIZE, pygame.MOUSEBUTTONDOWN]
-        pygame_events = pygame.event.get()
-        pygame.key.get_mods()
-        for event in pygame_events:
-            if event.type in sentinels:
-                events.append(event.type)
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_r and pygame.KMOD_CTRL:
-                game.reset()
-            if (event.type == pygame.QUIT
-            or event.type == pygame.KEYDOWN and event.key == pygame.K_c and pygame.KMOD_CTRL):
-                running = False
-
-        # Set variables based on game state
-        if game.is_over:
-            playercol = ct.WHITE
-        else:
-            (player,direction) = game.current_turn
-            playercol = PIECE_DATA[player][2][0][2]
-
-        pygame.display.set_caption(f"Leaves - Turn {game.current_turn_number}")
+        # Process input
+        events = set() # List of events to be used later
+        keys   = set() # List of pressed keys
+        mods   = set() # List of pressed key modifiers
+        for event in pygame.event.get():
+            # Add to sensed key presses
+            if event.type == pygame.KEYDOWN:
+                keys.add(event.key)
+            else:
+                events.add(event.type)
+        flags_set = pygame.key.get_mods()
+        for flag in [pygame.KMOD_CTRL,pygame.KMOD_SHIFT,pygame.KMOD_ALT]:
+            # Add to sense key modifiers
+            if flag & flags_set:
+                mods.add(flag)
 
         # Figure out basic margin for board drawing
+        # -> "(x|y)m(0|1)" are the (row|column) margin (start|end) coordinates
         (W,H) = pygame.display.get_surface().get_size()
         (gameW,gameH) = game.current_board_size
         fraction = 0.70
         win_mrg = int( min(W,H)/2 * (1-fraction) )
         ((xm0,ym0), (xm1,ym1)) = ((win_mrg,win_mrg), (W-win_mrg,H-win_mrg))
-        # -> m(x|y)(0|1) are the start/end coordinates for the margin
 
         # Figure out exact frame within which to draw game
-        # Game board has wider aspect ratio than allowed frame
+        # -> "(x|y)f(0|1)" are the (row|column) game board frame (start|end) coordinates
+        # Game board has wider aspect ratio than allowed frame:
         if ((xm1-xm0)/(ym1-ym0)) <= gameW/gameH:
             sidemrg = int( ((ym1-ym0) - gameH * (xm1-xm0)/gameW) / 2 )
             ((xf0,yf0), (xf1,yf1)) = ((xm0,ym0+sidemrg), (xm1,ym1-sidemrg))
-        # Game board has lower aspect ratio than allowed frame
+        # Game board has lower aspect ratio than allowed frame:
         elif ((xm1-xm0)/(ym1-ym0)) > gameW/gameH:
             sidemrg = int( ((xm1-xm0) - gameW * (ym1-ym0)/gameH) / 2 )
             ((xf0,yf0), (xf1,yf1)) = ((xm0+sidemrg,ym0), (xm1-sidemrg,ym1))
-        # -> f(x|y)(0|1) are the start/end coordinates for the game board frame
+
+        # Ctrl + r: Reset game
+        if pygame.KMOD_CTRL in mods and pygame.K_r in keys:
+            game.reset()
+        # quit | Ctrl + c: Quit game
+        if pygame.QUIT in events or (pygame.KMOD_CTRL in mods and pygame.K_c in keys):
+            running = False
+        # Ctrl + p: Toggle show_pruned
+        if pygame.KMOD_CTRL in mods and pygame.K_p in keys:
+            show_pruned ^= True
+        # Ctrl + s: Show turn history
+        if pygame.KMOD_CTRL in mods and pygame.K_s in keys:
+            print(f"Turn history:\n---\n{game.current_turn_history}\n---")
 
         # Process mouse
         (xms,yms) = pygame.mouse.get_pos()
-        if yf0 <= yms <= yf1 and (xms <= xf0 or xf1 <= xms):
+        # Mouse is on vertical sides:
+        if (xms <= xf0 or xf1 <= xms) and yf0 <= yms <= yf1:
             sel_line = int((yms-yf0) / (yf1-yf0) * gameH)
-            sel_dir = Dir.WEST if xms <= xf0 else Dir.EAST
-        elif xf0 <= xms <= xf1 and (yms <= yf0 or yf1 <= yms):
+            sel_dir  = Dir.WEST if xms <= xf0 else Dir.EAST
+        # Mouse is on horizontal sides:
+        elif (yms <= yf0 or yf1 <= yms) and xf0 <= xms <= xf1:
             sel_line = int((xms-xf0) / (xf1-xf0) * gameW)
-            sel_dir = Dir.NORTH if yms <= yf0 else Dir.SOUTH
+            sel_dir  = Dir.NORTH if yms <= yf0 else Dir.SOUTH
+        # Mouse is not selecting a game row or column:
         else:
             sel_line = None
-            sel_dir = None
+            sel_dir  = None
 
         # Process mouse click
         if pygame.MOUSEBUTTONDOWN in events:
@@ -103,10 +112,16 @@ def run(game):
                 case "":
                     game.make_move(sel_line,sel_dir)
                 case err:
-                    print(f"Whoops: {err}")
+                    print(f"Whoops: {err}") # TODO make error feedback better?
+
+        # Set window caption
+        pygame.display.set_caption(f"Leaves - Turn {game.current_turn_number+1}")
+
+        # Accent color used
+        accentcol = ct.LIGHT_GRAY if game.is_over else PIECE_DATA[game.current_turn[0]][2][0][2]
 
         # Draw background
-        bgcol = ct.mix(ct.BLACK,playercol,1/8)
+        bgcol = ct.mix(ct.mix(accentcol,ct.BLACK,6/8),ct.DARK_GRAY,1/8)
         win.fill(bgcol)
 
         # Draw debug.
@@ -120,69 +135,73 @@ def run(game):
         pygame.draw.rect(win, ct.YELLOW, (xf1,yf1, 2,2))"""
 
         # Draw selected line
-        tileSz = int((xf1-xf0) / gameW)
-        barcol1 = ct.mix(bgcol, ct.mix(ct.WHITE,playercol,2/8), 0.25)
-        barcol2 = ct.mix(bgcol, ct.mix(ct.WHITE,playercol,2/8), 0.4)
-        rate = 2500
-        t = pygame.time.get_ticks()%rate/rate
-        barcol = ct.interpolate([barcol1,barcol2,barcol1],t)
-        valid_move = game.check_move(sel_line,sel_dir) == ""
-        if sel_dir in [Dir.NORTH,Dir.SOUTH] and valid_move:
-            pygame.draw.rect(win, barcol, (xf0+tileSz*sel_line,0, tileSz,H))
-        elif sel_dir in [Dir.EAST,Dir.WEST] and valid_move:
-            pygame.draw.rect(win, barcol, (0,yf0+tileSz*sel_line, W,tileSz))
-        else:
+        tileSz = int((xf1-xf0) / gameW) # Available square length (px) per piece
+        barcol1 = ct.mix(bgcol, ct.mix(ct.WHITE,accentcol,2/8), 0.25) # Low pulse
+        barcol2 = ct.mix(bgcol, ct.mix(ct.WHITE,accentcol,2/8), 0.4) # High pulse
+        rate = 2500 # Blinking rate
+        timeparam = pygame.time.get_ticks()%rate/rate
+        barcol = ct.interpolate([barcol1,barcol2,barcol1],timeparam)
+        # Invalid move: Don't select line
+        if not game.check_move(sel_line,sel_dir) == "":
             pass
+        # Selected column:
+        elif sel_dir in [Dir.NORTH,Dir.SOUTH]:
+            pygame.draw.rect(win, barcol, (xf0+tileSz*sel_line,0, tileSz,H))
+        # Selected row:
+        elif sel_dir in [Dir.EAST,Dir.WEST]:
+            pygame.draw.rect(win, barcol, (0,yf0+tileSz*sel_line, W,tileSz))
 
-        # Draw tiles
-        psize = 0.9
-        for (xp,yp),piecetype in game._board.pieces.items():
-            (xt,yt) = (xf0 + xp*tileSz, yf0 + yp*tileSz)
-            for ((xd,yd),(xl,yl),col) in PIECE_DATA[piecetype][2]:
-                pygame.draw.rect(win, col, (
-                    xd*tileSz*psize + tileSz*(1-psize)/2 + xt,
-                    xd*tileSz*psize + tileSz*(1-psize)/2 + yt,
-                    xl*tileSz*psize,
-                    yl*tileSz*psize,
-                ))
+        # Draw all board tiles
+        psize = 0.9 # Scaled piece size (so they dont stick to each other directly)
+        pmarg = tileSz*(1-psize)/2 # Resulting piece margin
+        board = game.board.pruned() if show_pruned else game.board
+        for (xp,yp),piecetype in board.pieces.items():
+            (xa,ya) = (xf0 + xp*tileSz, yf0 + yp*tileSz) # Piece (tile) anchor
+            # Draw each of the piece layers
+            for ((xo,yo),(xl,yl),color) in PIECE_DATA[piecetype][2]:
+                offset_size = (
+                    xo*tileSz*psize + pmarg + xa, # Texture offset
+                    xo*tileSz*psize + pmarg + ya, #
+                    xl*tileSz*psize, # Texture length
+                    yl*tileSz*psize) #
+                pygame.draw.rect(win, color, offset_size)
 
-        # Draw text
-        if game.is_over:
+        # Draw texts
+        if not game.is_over:
+            (player,direction) = game.current_turn
+            (dsprite,dname) = DIR_DATA_ANY if direction is None else DIR_DATA[direction]
+            ratio = 5 # Split remaining vertical space into equal sections
+            # Window resized: Reload (resize) font
+            if pygame.VIDEORESIZE in events:
+                font = pygame.font.SysFont("monospace", round(win_mrg/ratio))
+            fontcol = ct.mix(ct.WHITE,accentcol,2/8)
+            win.blit( # Current player text
+                font.render(f"Player {1+player}",True,fontcol),
+                (win_mrg/ratio,win_mrg*1/ratio))
+            win.blit( # Current direction text
+                font.render(f"Direction: {dsprite} {dname}",True,fontcol),
+                (win_mrg/ratio,win_mrg*2/ratio))
+            win.blit( # Pieces per player left text
+                font.render(f"Pieces left: {', '.join(f'Player {1+player} = {remaining}' for (player,remaining) in enumerate(game.remaining_pieces))}",True,fontcol),
+                (win_mrg/ratio,yf1+win_mrg*3/ratio))
+        # Game over - name winners:
+        else:
             winners = game.compute_winners()
+            # Unique winner:
             if len(winners) == 1:
-                fontcol = ct.mix(ct.WHITE,PIECE_DATA[winners[0]][2][0][2],8/8)
+                winnercol = PIECE_DATA[winners[0]][2][0][2]
                 text_winners = f"Player {1+winners[0]} wins!"
+            # Draw between several players:
             else:
-                fontcol = ct.mix(ct.WHITE,ct.BLACK,2/8)
+                winnercol = ct.LIGHT_GRAY
                 text_winners = f"It's a Draw between {', '.join(f'Player {1+winner}' for winner in winners)}!"
+            fontcol = ct.mix(ct.WHITE,winnercol,7/8)
             win.blit(
                 font.render(text_winners,True,fontcol),
-                (win_mrg/ratio,win_mrg/ratio)
-            )
-        else:
-            ratio = 5
-            if (pygame.VIDEORESIZE in events) or init:
-                font = pygame.font.SysFont("monospace", round(win_mrg/ratio))
-            fontcol = ct.mix(ct.WHITE,playercol,2/8)
-            (dsprite,dname) = DIR_DATA_ANY if direction is None else DIR_DATA[direction]
-            text_dir = f"{dsprite} {dname}"
-            win.blit(
-                font.render(f"Player {1+player}",True,fontcol),
-                (win_mrg/ratio,win_mrg*1/ratio)
-            )
-            win.blit(
-                font.render(f"Direction: {text_dir}",True,fontcol),
-                (win_mrg/ratio,win_mrg*2/ratio)
-            )
-            win.blit(
-                font.render(f"Pieces left: {', '.join(f'Player {1+player} = {remaining}' for (player,remaining) in enumerate(game.remaining_pieces))}",True,fontcol),
-                (win_mrg/ratio,yf1+win_mrg*3/ratio)
-            )
+                (win_mrg/ratio,win_mrg/ratio))
 
-        # End stage:
-        # Update display immediately and re-enter loop
+        # Update display and restart loop
         pygame.display.update()
-        init = False
 
     # Cleanup
     pygame.quit()

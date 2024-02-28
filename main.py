@@ -1,6 +1,6 @@
 # BEGIN OUTLINE
 """
-This script is to be executed as main and allows trying the game in the console and in pygame.
+This script allows trying the game on the command line and then with pygame.
 """
 # END   OUTLINE
 

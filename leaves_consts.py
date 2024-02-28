@@ -1,8 +1,6 @@
 # BEGIN OUTLINE
 """
-TODO :
-- Save game using game notation?
-- Connected areas count?
+This file contains constant declarations for some cosmetic leaves.Game data.
 """
 # END   OUTLINE
 
@@ -23,8 +21,10 @@ DIR_DATA = {
     Dir.SOUTH: ("↑", "South"),
     Dir.WEST:  ("⟶ ", "West"),
 }
+"""Data dictionary for each direction variant."""
 
 DIR_DATA_ANY = ("⟳", "*any direction*")
+"""Data dictionary for a designated "any" direction variant."""
 
 PIECE_DATA = {
     -1: ("[]","Log", [
@@ -33,7 +33,7 @@ PIECE_DATA = {
           (((1-m)/2,(1-m)/2), (m,m), ct.COLORS['earth']),
         ]),
     0: ("░░", "First player", [
-          ((0.0,0.0), (1.0,1.0), ct.mix(ct.PINK,ct.VIOLET,0.25)),
+          ((0.0,0.0), (1.0,1.0), ct.mix(ct.PINK,ct.VIOLET,0.125)),
        ]),
     1: ("██", "Second player", [
           ((0.0,0.0), (1.0,1.0), ct.mix(ct.MINT,ct.MOSS,0.25)),
@@ -45,8 +45,10 @@ PIECE_DATA = {
           ((0.0,0.0), (1.0,1.0), ct.mix(ct.SALMON,ct.YELLOW,0.25)),
        ]),
 }
+"""Data dictionary for each player piece variant."""
 
 PIECE_DATA_EMPTY = ('  ',"(empty)", ct.BLACK)
+"""Data dictionary for a designated "empty" player piece variant."""
 
 # END   CONSTANTS
 
