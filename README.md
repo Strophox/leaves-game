@@ -34,13 +34,11 @@ Screenshots from the game.
 
 ### Pygame (GUI)
 
-![pygame01](Gallery/screenshot_pygame01.png)
+![pygame01](Gallery/screenshot_pygame01_new.png)
 
-![pygame02](Gallery/screenshot_pygame02.png)
+![pygame02](Gallery/screenshot_pygame02_new.png)
 
-![pygame03](Gallery/screenshot_pygame03.png)
-
-![pygame04](Gallery/screenshot_pygame04.png)
+![pygame03](Gallery/screenshot_pygame03_new.png)
 
 
 ## Resources
