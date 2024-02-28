@@ -134,7 +134,7 @@ def run(game):
             alnStr('<', BAR),
             alnStr(f'^{W}', f"Turn {game.current_turn_number}"),
             alnStr(f'^{W}', text_turn),
-            alnStr(f'^{W}', boxStr(alnStr(f'^{W-4}', game.str_board(tilemap)))),
+            alnStr(f'^{W}', boxStr(alnStr(f'^{W-4}', game.board.show(tilemap)))),
             alnStr(f'^{W}', f"[pieces left: {' - '.join(f'{remaining} {PIECE_DATA[player][0]}' for (player,remaining) in enumerate(game.remaining_pieces))}]"),
             alnStr('<',(text_ex if game.current_turn_number <= 3 else '')),
         )
@@ -158,16 +158,16 @@ def run(game):
     # Main loop over, display winners (unique winner or draw)
     winners = game.compute_winners()
     if len(winners) == 1:
-        (psprite,pname) = PIECE_DATA(winners[0])
+        (psprite,pname,*_) = PIECE_DATA[winners[0]]
         text_winners = f"⋆｡ﾟ☁｡ {psprite} {pname} won the game! {psprite} ｡ ﾟ☾｡⋆"
     else:
         text_winners = f"It's a Draw between {', '.join(PIECE_DATA(winner)[1] for winner in winners)}!"
     end_text = glueStrs( # Endscreen text
         alnStr('<',BAR),
-        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.str_board(tilemap)))),
+        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.board.show(tilemap)))),
         alnStr(f'^{W}',"Game Over."),
         alnStr(f'^{W}',"Resulting pruned tree:"),
-        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.pruned().str_board(tilemap,pruned=True)))),
+        alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', game.board.pruned().show(tilemap)))),
         alnStr(f'^{W}',f"Player scores: {' - '.join(f'{score} {PIECE_DATA[player][0]}' for (player,score) in enumerate(game.scores()))}"),
         alnStr(f'^{W}',boxStr(alnStr(f'^{W-4}', text_winners))),
         alnStr(f'^{W}',BAR),

@@ -183,12 +183,6 @@ class Game:
         winners = [player for (player,score) in scores.items() if score == best_score]
         return winners
 
-    def str_board(self, get_tile, pruned=False):
-        """Print the board as string using a tileset for the piece types and whether the pruned board should be displayed."""
-        board = self._board.pruned() if pruned else self._board
-        string = board.show(get_tile)
-        return string
-
     def make_move(self, offset, new_direction):
         """Try to make a move for the current player given a line offset and the intended direction."""
         # Abort if move is invalid

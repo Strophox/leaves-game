@@ -114,9 +114,6 @@ def run(game):
                 case err:
                     print(f"Whoops: {err}") # TODO make error feedback better?
 
-        # Set window caption
-        pygame.display.set_caption(f"Leaves - Turn {game.current_turn_number+1}")
-
         # Accent color used
         accentcol = ct.LIGHT_GRAY if game.is_over else PIECE_DATA[game.current_turn[0]][2][0][2]
 
@@ -167,10 +164,12 @@ def run(game):
                 pygame.draw.rect(win, color, offset_size)
 
         # Draw texts
+        ratio = 5 # Split remaining vertical space into equal sections
         if not game.is_over:
             (player,direction) = game.current_turn
             (dsprite,dname) = DIR_DATA_ANY if direction is None else DIR_DATA[direction]
-            ratio = 5 # Split remaining vertical space into equal sections
+            # Set window caption
+            pygame.display.set_caption(f"Leaves - Turn {game.current_turn_number+1}")
             # Window resized: Reload (resize) font
             if pygame.VIDEORESIZE in events:
                 font = pygame.font.SysFont("monospace", round(win_mrg/ratio))
@@ -186,6 +185,8 @@ def run(game):
                 (win_mrg/ratio,yf1+win_mrg*3/ratio))
         # Game over - name winners:
         else:
+            # Set window caption
+            pygame.display.set_caption(f"Leaves - Game Over!")
             winners = game.compute_winners()
             # Unique winner:
             if len(winners) == 1:
